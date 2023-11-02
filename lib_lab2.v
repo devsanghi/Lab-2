@@ -58,7 +58,7 @@ module DataMem(Addr, Size, DataIn, DataOut, WEN, CLK);
 	endcase // case (Size)
      end // if (!WEN)
       
-endmodule // InstMem
+endmodule // DataMem
 
 module RegFile(AddrA, DataOutA,
 	       AddrB, DataOutB,
