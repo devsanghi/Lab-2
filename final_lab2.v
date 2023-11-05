@@ -74,7 +74,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////   
 
-//Sigle Cycle CPU
+//Single Cycle CPU
 module SingleCycleCPU(halt, clk, rst);
     output halt;
     input clk, rst;
@@ -96,9 +96,9 @@ module SingleCycleCPU(halt, clk, rst);
     wire [2:0]  funct3;
     wire [11:0] Iimm12;
     wire [11:0] Simm12;
-    wire [11:0] Bimm12;
+    wire [11:0] Bimm13;
     wire [19:0] Uimm20;
-    wire [19:0] Jimm20;
+    wire [19:0] Jimm21;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 0) HALT
@@ -111,11 +111,11 @@ module SingleCycleCPU(halt, clk, rst);
     // 1) FETCH
     // System State (everything is neg assert)
     InstMem IMEM(.Addr(PC), .Size(`SIZE_WORD), .DataOut(InstWord), .CLK(clk));
-    DataMem DMEM(.Addr(DataAddr), .Size(MemSize), .DataIn(StoreData), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
+    // DataMem DMEM(.Addr(DataAddr), .Size(MemSize), .DataIn(StoreData), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
 
-    RegFile RF(.AddrA(Rsrc1), .DataOutA(Rdata1), 
-            .AddrB(Rsrc2), .DataOutB(Rdata2), 
-            .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
+    // RegFile RF(.AddrA(Rsrc1), .DataOutA(Rdata1), 
+    //         .AddrB(Rsrc2), .DataOutB(Rdata2), 
+    //         .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
 
     Reg PC_REG(.Din(NPC), .Qout(PC), .WEN(1'b0), .CLK(clk), .RST(rst));
 
@@ -135,8 +135,14 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 3) CONTROL
-    ControlUnit CUNIT(.opcode(opcode), .funct3(funct3), .funct7(funct7), 
-            .nPC_sel(nPC_sel), .RegWr(RegWr), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWr(MemWr), .MemtoReg(MemtoReg));
+    ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
+            .nPC_sel(nPC_sel), .RegWr(RegWr), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
+    // 4) Read Regs a,b from file
+    RegFile RF1(.AddrA(Rsrc1), .DataOutA(Rdata1), 
+            .AddrB(Rsrc2), .DataOutB(Rdata2), 
+            .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 4) Execute
@@ -148,10 +154,10 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 6) Update Regs
-    RegFile RF2()
+    RegFile RF3()
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 7) PC Update
-    
+
 
 
 
@@ -166,13 +172,14 @@ module ControlUnit(
     input [6:0] opcode,
     input [2:0] funct3,
     input [6:0] funct7,
+    output reg [1:0]  MemSize,
     output reg [1:0] nPC_sel,
     output reg RegWr,
     output reg RegDst,
     output reg ExtOp,
     output reg ALUSrc,
     output reg [3:0] ALUctr,
-    output reg MemWr,
+    output reg MemWrEn,
     output reg MemtoReg
     );
 
@@ -185,7 +192,7 @@ module ControlUnit(
         ExtOp = 1; // Assume sign extension by default
         ALUSrc = 0;
         ALUctr = ALU_ADD; // Default ALU operation is ADD
-        MemWr = 0;
+        MemWrEn = 0;
         MemtoReg = 0;
 
         case (opcode)
@@ -233,11 +240,23 @@ module ControlUnit(
                 RegWr = 1;
                 ALUSrc = 1; // Load uses immediate
                 MemtoReg = 1; // Load data from memory
+                case (funct3)
+                    `FUNC_LB: MemSize = `SIZE_BYTE;
+                    `FUNC_LH: MemSize = `SIZE_HWORD;
+                    `FUNC_LW: MemSize = `SIZE_WORD;
+                    `FUNC_LBU: MemSize = `SIZE_BYTE;
+                    `FUNC_LHU: MemSize = `SIZE_HWORD;
+                endcase
                 // ALU operation is ADD for address calculation
             end
             `OPCODE_STORE: begin
-                MemWr = 1;
+                MemWrEn = 1;
                 ALUSrc = 1; // Store uses immediate
+                case (funct3)
+                    `FUNC_SB: MemSize = `SIZE_BYTE;
+                    `FUNC_SH: MemSize = `SIZE_HWORD;
+                    `FUNC_SW: MemSize = `SIZE_WORD;
+                endcase
                 // ALU operation is ADD for address calculation
             end
             `OPCODE_IMMEDIATE: begin
@@ -280,17 +299,58 @@ module ALU(
     input [31:0] a,
     input [31:0] b,
     input [3:0] ALUctr,
+    input ALUSrc,
+    input [11:0] Iimm12,
+    input [11:0] Simm12,
+    input [12:0] Bimm13,
+    input [19:0] Uimm20,
+    input [20:0] Jimm21,
     output reg [31:0] result,
     output zero,
     output negative,
     output overflow
     );
 
+    // Temporary fix until we implement the extop to determine if we sign extend
+    wire [31:0] extended_Iimm = {{20{Iimm12[11]}}, Iimm12};
+    wire [31:0] extended_Simm = {{20{Simm12[11]}}, Simm12};
+    wire [31:0] extended_Bimm = {{19{Bimm13[12]}}, Bimm13, 1'b0};
+    wire [31:0] extended_Uimm = {Uimm20, 12'b0};
+    wire [31:0] extended_Jimm = {{11{Jimm21[20]}}, Jimm21, 1'b0};
+
+    function [31:0] select_operand2;
+        input [3:0] ALUctr;
+        input ALUSrc;
+        input [31:0] b;
+        input [31:0] Iimm;
+        input [31:0] Simm;
+        input [31:0] Bimm;
+        input [31:0] Uimm;
+        input [31:0] Jimm;
+        begin
+            if (ALUSrc) begin
+                case (ALUctr)
+                    ALU_ADD,
+                    ALU_SUB,
+                    ALU_SLT,
+                    ALU_SLTU: select_operand2 = Iimm; // I-Type operations
+                    ALU_LUI:  select_operand2 = Uimm; // U-Type operation for LUI
+                    // Add other cases if necessary for different types of immediates
+                    default: select_operand2 = 32'b0; // Fallback if no immediate is selected
+                endcase
+            end else begin
+                select_operand2 = b; // Use the value from register b if ALUSrc is 0
+            end
+        end
+    endfunction
+
+    wire [31:0] operand2 = select_operand2(ALUctr, ALUSrc, b, extended_Iimm, extended_Simm, extended_Bimm, extended_Uimm, extended_Jimm);
+
     // Internal signals for signed and unsigned comparisons
     wire signed [31:0] signed_a = a;
-    wire signed [31:0] signed_b = b;
+    wire signed [31:0] signed_b = operand2;
     wire [31:0] unsigned_a = a;
-    wire [31:0] unsigned_b = b;
+    wire [31:0] unsigned_b = operand2;
 
     // Detect overflow for addition and subtraction
     wire overflow_add = (~(a[31] ^ b[31]) & (a[31] ^ result[31]));
@@ -307,12 +367,12 @@ module ALU(
                 result = a - b;
                 overflow = overflow_sub;
             end
-            ALU_AND: result = a & b;
-            ALU_OR:  result = a | b;
-            ALU_XOR: result = a ^ b;
-            ALU_SLL: result = a << b[4:0]; // only use the lower 5 bits of b
-            ALU_SRL: result = a >> b[4:0]; // only use the lower 5 bits of b
-            ALU_SRA: result = signed_a >>> b[4:0]; // arithmetic shift right
+            ALU_AND: result = a & operand2;
+            ALU_OR:  result = a | operand2;
+            ALU_XOR: result = a ^ operand2;
+            ALU_SLL: result = a << operand2[4:0]; // only use the lower 5 bits of b
+            ALU_SRL: result = a >> operand2[4:0]; // only use the lower 5 bits of b
+            ALU_SRA: result = signed_a >>> operand2[4:0]; // arithmetic shift right
             ALU_SLT: result = signed_a < signed_b ? 32'b1 : 32'b0;
             ALU_SLTU: result = unsigned_a < unsigned_b ? 32'b1 : 32'b0;
             ALU_NOP: result = a; // For LUI, just pass the operand through
