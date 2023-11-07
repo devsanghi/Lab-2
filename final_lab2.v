@@ -59,17 +59,17 @@
 // For Execution Unit Jump instructions
 `define FUNC_JALR  3'b000
 // ALU Control
-`define ALU_ADD  4'b0000;
-`define ALU_SUB  4'b0001;
-`define ALU_AND   4'b0010;
-`define ALU_OR    4'b0011;
-`define ALU_XOR   4'b0100;
-`define ALU_SLL   4'b0101;
-`define ALU_SRL   4'b0110;
-`define ALU_SRA   4'b0111;
-`define ALU_SLT   4'b1000;
-`define ALU_SLTU  4'b1001;
-`define ALU_NOP   4'b1111;
+`define ALU_ADD  4'b0000
+`define ALU_SUB  4'b0001
+`define ALU_AND   4'b0010
+`define ALU_OR    4'b0011
+`define ALU_XOR   4'b0100
+`define ALU_SLL   4'b0101
+`define ALU_SRL   4'b0110
+`define ALU_SRA   4'b0111
+`define ALU_SLT   4'b1000
+`define ALU_SLTU  4'b1001
+`define ALU_NOP   4'b1111
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////   
@@ -92,6 +92,7 @@ module SingleCycleCPU(halt, clk, rst);
     wire PCSrc; //
     wire [31:0] BranchAnd; //
     wire [6:0]  opcode;
+    
 
     // needed for instruction decode
     wire [6:0]  funct7;
@@ -150,7 +151,7 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 7) Execute
-    ALU ALU1(.a(Rdata1), .b(ALUop2), .ALUctr(ALUctr), .result(ALUresult), .zero(zero), .negative(negative), .overflow(overflow));
+    ALU ALU1(.a(Rdata1), .b(ALUop2), .ALUctr(ALUctr), .result(ALUresult), .zero(zero), .negative(negative));//, .overflow(overflow));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 8) we have PC, PC+4, and immediate
@@ -210,7 +211,7 @@ module ControlUnit(
         RegDst = 0;
         ExtOp = 1; // Assume sign extension by default
         ALUSrc = 0;
-        ALUctr = ALU_ADD; // Default ALU operation is ADD
+        ALUctr = `ALU_ADD; // Default ALU operation is ADD
         MemWrEn = 0;
         MemtoReg = 0;
 
@@ -218,27 +219,27 @@ module ControlUnit(
             `OPCODE_LUI: begin
                 RWrEn = 1;
                 ALUSrc = 1; // Source is immediate
-                ALUctr = ALU_NOP; // No operation needed, just load immediate
+                ALUctr = `ALU_NOP; // No operation needed, just load immediate
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_AUIPC: begin
                 RWrEn = 1;
                 ALUSrc = 1; // Source is immediate
-                ALUctr = ALU_ADD; // Add to PC
+                ALUctr = `ALU_ADD; // Add to PC
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_JAL: begin
                 nPC_sel = 2'b10; // JAL address
                 RWrEn = 1;
                 RegDst = 1; // Write to rd
-                ALUctr = ALU_ADD; // PC + 4
+                ALUctr = `ALU_ADD; // PC + 4
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_JALR: begin
                 nPC_sel = 2'b11; // JALR address
                 RWrEn = 1;
                 RegDst = 1; // Write to rd
-                ALUctr = ALU_ADD; // PC + 4
+                ALUctr = `ALU_ADD; // PC + 4
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_BRANCH: begin
@@ -247,12 +248,12 @@ module ControlUnit(
                 RWrEn = 0;
                 // Select the branch decision control signal based on funct3
                 case (funct3)
-                    `FUNC_BEQ: ALUctr = ALU_SUB; // For beq, subtract and check zero
-                    `FUNC_BNE: ALUctr = ALU_SUB; // For bne, subtract and check non-zero
-                    `FUNC_BLT: ALUctr = ALU_SLT; // For blt, set less than
-                    `FUNC_BGE: ALUctr = ALU_SLT; // For bge, set less than and negate
-                    `FUNC_BLTU: ALUctr = ALU_SLTU; // For bltu, set less than unsigned
-                    `FUNC_BGEU: ALUctr = ALU_SLTU; // For bgeu, set less than unsigned and negate
+                    `FUNC_BEQ: ALUctr = `ALU_SUB; // For beq, subtract and check zero
+                    `FUNC_BNE: ALUctr = `ALU_SUB; // For bne, subtract and check non-zero
+                    `FUNC_BLT: ALUctr = `ALU_SLT; // For blt, set less than
+                    `FUNC_BGE: ALUctr = `ALU_SLT; // For bge, set less than and negate
+                    `FUNC_BLTU: ALUctr = `ALU_SLTU; // For bltu, set less than unsigned
+                    `FUNC_BGEU: ALUctr = `ALU_SLTU; // For bgeu, set less than unsigned and negate
                 endcase
             end
             `OPCODE_LOAD: begin
@@ -283,13 +284,13 @@ module ControlUnit(
                 ALUSrc = 1; // I-type uses immediate
                 // Decoding the exact ALU operation based on funct3 and funct7
                 case (funct3)
-                    `FUNC_ADDI: ALUctr = ALU_ADD;
-                    `FUNC_SLTI: ALUctr = ALU_SLT;
-                    `FUNC_XORI: ALUctr = ALU_XOR;
-                    `FUNC_ORI: ALUctr = ALU_OR;
-                    `FUNC_ANDI: ALUctr = ALU_AND;
-                    `FUNC_SLLI: ALUctr = ALU_SLL;
-                    `FUNC_SRLI: ALUctr = (funct7 == `AUX_FUNC_SRAI) ? ALU_SRA : ALU_SRL;
+                    `FUNC_ADDI: ALUctr = `ALU_ADD;
+                    `FUNC_SLTI: ALUctr = `ALU_SLT;
+                    `FUNC_XORI: ALUctr = `ALU_XOR;
+                    `FUNC_ORI: ALUctr = `ALU_OR;
+                    `FUNC_ANDI: ALUctr = `ALU_AND;
+                    `FUNC_SLLI: ALUctr = `ALU_SLL;
+                    `FUNC_SRLI: ALUctr = (funct7 == `AUX_FUNC_SRAI) ? `ALU_SRA : `ALU_SRL;
                 endcase
             end
             `OPCODE_COMPUTE: begin
@@ -297,14 +298,14 @@ module ControlUnit(
                 RegDst = 1; // R-type uses rd
                 // Decoding the exact ALU operation based on funct3 and funct7
                 case (funct3)
-                    `FUNC_ADD: ALUctr = (funct7 == `AUX_FUNC_SUB) ? ALU_SUB : ALU_ADD;
-                    `FUNC_SLL: ALUctr = ALU_SLL;
-                    `FUNC_SLT: ALUctr = ALU_SLT;
-                    `FUNC_SLTU: ALUctr = ALU_SLTU;
-                    `FUNC_XOR: ALUctr = ALU_XOR;
-                    `FUNC_SRL: ALUctr = (funct7 == `AUX_FUNC_SRA) ? ALU_SRA : ALU_SRL;
-                    `FUNC_OR: ALUctr = ALU_OR;
-                    `FUNC_AND: ALUctr = ALU_AND;
+                    `FUNC_ADD: ALUctr = (funct7 == `AUX_FUNC_SUB) ? `ALU_SUB : `ALU_ADD;
+                    `FUNC_SLL: ALUctr = `ALU_SLL;
+                    `FUNC_SLT: ALUctr = `ALU_SLT;
+                    `FUNC_SLTU: ALUctr = `ALU_SLTU;
+                    `FUNC_XOR: ALUctr = `ALU_XOR;
+                    `FUNC_SRL: ALUctr = (funct7 == `AUX_FUNC_SRA) ? `ALU_SRA : `ALU_SRL;
+                    `FUNC_OR: ALUctr = `ALU_OR;
+                    `FUNC_AND: ALUctr = `ALU_AND;
                 endcase
             end
             // Add additional cases for other opcodes if necessary
@@ -320,8 +321,8 @@ module ALU(
     input [3:0] ALUctr,
     output reg [31:0] result,
     output zero,
-    output negative,
-    output overflow
+    output negative
+    // output overflow do we need overflow??
     );
 
     // Internal signals for signed and unsigned comparisons
@@ -335,23 +336,23 @@ module ALU(
     // Determine the result based on the ALU control signal
     always @(*) begin
         case (ALUctr)
-            ALU_ADD: begin
+            `ALU_ADD: begin
                 result = a + b;
-                overflow = overflow_add;
+                //overflow = overflow_add;
             end
-            ALU_SUB: begin
+            `ALU_SUB: begin
                 result = a - b;
-                overflow = overflow_sub;
+                //overflow = overflow_sub;
             end
-            ALU_AND: result = a & b;
-            ALU_OR:  result = a | b;
-            ALU_XOR: result = a ^ b;
-            ALU_SLL: result = a << b[4:0]; // only use the lower 5 bits of b
-            ALU_SRL: result = a >> b[4:0]; // only use the lower 5 bits of b
-            ALU_SRA: result = signed_a >>> b[4:0]; // arithmetic shift right
-            ALU_SLT: result = signed_a < signed_b ? 32'b1 : 32'b0;
-            ALU_SLTU: result = a < b ? 32'b1 : 32'b0;
-            ALU_NOP: result = b; // For LUI, just pass the operand through
+            `ALU_AND: result = a & b;
+            `ALU_OR:  result = a | b;
+            `ALU_XOR: result = a ^ b;
+            `ALU_SLL: result = a << b[4:0]; // only use the lower 5 bits of b
+            `ALU_SRL: result = a >> b[4:0]; // only use the lower 5 bits of b
+            `ALU_SRA: result = signed_a >>> b[4:0]; // arithmetic shift right
+            `ALU_SLT: result = signed_a < signed_b ? 32'b1 : 32'b0;
+            `ALU_SLTU: result = a < b ? 32'b1 : 32'b0;
+            `ALU_NOP: result = b; // For LUI, just pass the operand through
             default: result = 32'b0; // should not happen
         endcase
     end
