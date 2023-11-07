@@ -117,7 +117,8 @@ module SingleCycleCPU(halt, clk, rst);
     //         .AddrB(Rsrc2), .DataOutB(Rdata2), 
     //         .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
 
-    Reg PC_REG(.Din(NPC), .Qout(PC), .WEN(1'b0), .CLK(clk), .RST(rst));
+    // PC Update
+    AdderPC APC1(.PC(PC), .out(PC_Plus_4));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 2) DECODE
@@ -136,7 +137,7 @@ module SingleCycleCPU(halt, clk, rst);
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 3) CONTROL
     ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
-            .nPC_sel(nPC_sel), .RegWr(RegWr), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
+            .nPC_sel(nPC_sel), .RWrEn(RWrEn), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 4) Read Regs a,b from file
@@ -145,19 +146,33 @@ module SingleCycleCPU(halt, clk, rst);
             .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
-    // 4) Execute
-    ALU ALU1(.a(Rdata1), .b(Rdata2), .ALUctr(ALUctr), .result(ALUresult), .zero(zero), .negative(negative), .overflow(overflow));
+    // 5) Extender
+    Extender EX1(.Iimm12(Iimm12), .Simm12(Simm12), .Bimm13(Bimm13), .Uimm20(Uimm20), .Jimm21(Jimm21), .ExtOp(ExtOp), .opcode(opcode),
+            .extended_Iimm(extended_Iimm), .extended_Simm(extended_Simm), .extended_Bimm(extended_Bimm), .extended_Uimm(extended_Uimm), .extended_Jimm(extended_Jimm), .Imm_extended(Imm_extended));
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
+    // 6) Mux for op2 or immediate
+    MuxI MUXI1(.a(Rdata2), .b(Imm_extended), .sel(ALUSrc), .out(ALUop2));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
-    // 5) Memory
+    // 7) Execute
+    ALU ALU1(.a(Rdata1), .b(ALUop2), .ALUctr(ALUctr), .result(ALUresult), .zero(zero), .negative(negative), .overflow(overflow));
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
+    // 8) we have PC, PC+4, and immediate
+    AdderPCImm API1(.PC_Plus_4(PC_Plus_4), .Imm(Imm_extended), .PC_Imm(PC_Imm));
+    AndGate AG1(.a(), .b(1'b1), .out(nPC_sel));
+    MuxI MUXI2(.a(PC_Plus_4), .b(PC_Imm), .sel(nPC_sel), .out(NPC));
+    
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
+    // 9) Memory
     DataMem DMEM(.Addr(ALUresult), .Size(MemSize), .DataIn(StoreData), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
-    // 6) Update Regs
+    // 10) Update Regs
     RegFile RF3()
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
-    // 7) PC Update
-
+    // 11) PC Update
+    Reg PC_REG(.Din(NPC), .Qout(PC), .WEN(1'b0), .CLK(clk), .RST(rst));
 
 
 
@@ -174,7 +189,7 @@ module ControlUnit(
     input [6:0] funct7,
     output reg [1:0]  MemSize,
     output reg [1:0] nPC_sel,
-    output reg RegWr,
+    output reg RWrEn,
     output reg RegDst,
     output reg ExtOp,
     output reg ALUSrc,
@@ -187,7 +202,7 @@ module ControlUnit(
     always @(*) begin
         // Default control signal values
         nPC_sel = 2'b00;
-        RegWr = 0;
+        RWrEn = 0;
         RegDst = 0;
         ExtOp = 1; // Assume sign extension by default
         ALUSrc = 0;
@@ -197,27 +212,27 @@ module ControlUnit(
 
         case (opcode)
             `OPCODE_LUI: begin
-                RegWr = 1;
+                RWrEn = 1;
                 ALUSrc = 1; // Source is immediate
                 ALUctr = ALU_NOP; // No operation needed, just load immediate
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_AUIPC: begin
-                RegWr = 1;
+                RWrEn = 1;
                 ALUSrc = 1; // Source is immediate
                 ALUctr = ALU_ADD; // Add to PC
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_JAL: begin
                 nPC_sel = 2'b10; // JAL address
-                RegWr = 1;
+                RWrEn = 1;
                 RegDst = 1; // Write to rd
                 ALUctr = ALU_ADD; // PC + 4
                 MemtoReg = 0; // Select ALU result
             end
             `OPCODE_JALR: begin
                 nPC_sel = 2'b11; // JALR address
-                RegWr = 1;
+                RWrEn = 1;
                 RegDst = 1; // Write to rd
                 ALUctr = ALU_ADD; // PC + 4
                 MemtoReg = 0; // Select ALU result
@@ -225,7 +240,7 @@ module ControlUnit(
             `OPCODE_BRANCH: begin
                 nPC_sel = 2'b01; // Branch address
                 // Branch instructions do not write to the register file
-                RegWr = 0;
+                RWrEn = 0;
                 // Select the branch decision control signal based on funct3
                 case (funct3)
                     `FUNC_BEQ: ALUctr = ALU_SUB; // For beq, subtract and check zero
@@ -237,7 +252,7 @@ module ControlUnit(
                 endcase
             end
             `OPCODE_LOAD: begin
-                RegWr = 1;
+                RWrEn = 1;
                 ALUSrc = 1; // Load uses immediate
                 MemtoReg = 1; // Load data from memory
                 case (funct3)
@@ -260,7 +275,7 @@ module ControlUnit(
                 // ALU operation is ADD for address calculation
             end
             `OPCODE_IMMEDIATE: begin
-                RegWr = 1;
+                RWrEn = 1;
                 ALUSrc = 1; // I-type uses immediate
                 // Decoding the exact ALU operation based on funct3 and funct7
                 case (funct3)
@@ -274,7 +289,7 @@ module ControlUnit(
                 endcase
             end
             `OPCODE_COMPUTE: begin
-                RegWr = 1;
+                RWrEn = 1;
                 RegDst = 1; // R-type uses rd
                 // Decoding the exact ALU operation based on funct3 and funct7
                 case (funct3)
@@ -299,58 +314,15 @@ module ALU(
     input [31:0] a,
     input [31:0] b,
     input [3:0] ALUctr,
-    input ALUSrc,
-    input [11:0] Iimm12,
-    input [11:0] Simm12,
-    input [12:0] Bimm13,
-    input [19:0] Uimm20,
-    input [20:0] Jimm21,
     output reg [31:0] result,
     output zero,
     output negative,
     output overflow
     );
 
-    // Temporary fix until we implement the extop to determine if we sign extend
-    wire [31:0] extended_Iimm = {{20{Iimm12[11]}}, Iimm12};
-    wire [31:0] extended_Simm = {{20{Simm12[11]}}, Simm12};
-    wire [31:0] extended_Bimm = {{19{Bimm13[12]}}, Bimm13, 1'b0};
-    wire [31:0] extended_Uimm = {Uimm20, 12'b0};
-    wire [31:0] extended_Jimm = {{11{Jimm21[20]}}, Jimm21, 1'b0};
-
-    function [31:0] select_operand2;
-        input [3:0] ALUctr;
-        input ALUSrc;
-        input [31:0] b;
-        input [31:0] Iimm;
-        input [31:0] Simm;
-        input [31:0] Bimm;
-        input [31:0] Uimm;
-        input [31:0] Jimm;
-        begin
-            if (ALUSrc) begin
-                case (ALUctr)
-                    ALU_ADD,
-                    ALU_SUB,
-                    ALU_SLT,
-                    ALU_SLTU: select_operand2 = Iimm; // I-Type operations
-                    ALU_LUI:  select_operand2 = Uimm; // U-Type operation for LUI
-                    // Add other cases if necessary for different types of immediates
-                    default: select_operand2 = 32'b0; // Fallback if no immediate is selected
-                endcase
-            end else begin
-                select_operand2 = b; // Use the value from register b if ALUSrc is 0
-            end
-        end
-    endfunction
-
-    wire [31:0] operand2 = select_operand2(ALUctr, ALUSrc, b, extended_Iimm, extended_Simm, extended_Bimm, extended_Uimm, extended_Jimm);
-
     // Internal signals for signed and unsigned comparisons
     wire signed [31:0] signed_a = a;
-    wire signed [31:0] signed_b = operand2;
-    wire [31:0] unsigned_a = a;
-    wire [31:0] unsigned_b = operand2;
+    wire signed [31:0] signed_b = b;
 
     // Detect overflow for addition and subtraction
     wire overflow_add = (~(a[31] ^ b[31]) & (a[31] ^ result[31]));
@@ -367,15 +339,15 @@ module ALU(
                 result = a - b;
                 overflow = overflow_sub;
             end
-            ALU_AND: result = a & operand2;
-            ALU_OR:  result = a | operand2;
-            ALU_XOR: result = a ^ operand2;
-            ALU_SLL: result = a << operand2[4:0]; // only use the lower 5 bits of b
-            ALU_SRL: result = a >> operand2[4:0]; // only use the lower 5 bits of b
-            ALU_SRA: result = signed_a >>> operand2[4:0]; // arithmetic shift right
+            ALU_AND: result = a & b;
+            ALU_OR:  result = a | b;
+            ALU_XOR: result = a ^ b;
+            ALU_SLL: result = a << b[4:0]; // only use the lower 5 bits of b
+            ALU_SRL: result = a >> b[4:0]; // only use the lower 5 bits of b
+            ALU_SRA: result = signed_a >>> b[4:0]; // arithmetic shift right
             ALU_SLT: result = signed_a < signed_b ? 32'b1 : 32'b0;
-            ALU_SLTU: result = unsigned_a < unsigned_b ? 32'b1 : 32'b0;
-            ALU_NOP: result = a; // For LUI, just pass the operand through
+            ALU_SLTU: result = a < b ? 32'b1 : 32'b0;
+            ALU_NOP: result = b; // For LUI, just pass the operand through
             default: result = 32'b0; // should not happen
         endcase
     end
@@ -386,4 +358,98 @@ module ALU(
     // Negative flag
     assign negative = result[31];
 
+endmodule
+
+// Sign Extend
+module Extender(
+    input [11:0] Iimm12, Simm12, 
+    input [12:0] Bimm13, 
+    input [19:0] Uimm20, 
+    input [20:0] Jimm21,
+    input ExtOp,
+    input [6:0] opcode,
+    wire [31:0] extended_Iimm,
+    wire [31:0] extended_Simm,
+    wire [31:0] extended_Bimm,
+    wire [31:0] extended_Uimm,
+    wire [31:0] extended_Jimm,
+    output reg [31:0] Imm_extended
+    );
+
+    always @(*) begin
+        if (ExtOp) begin // Sign extend
+            extended_Iimm = {{20{Iimm12[11]}}, Iimm12};
+            extended_Simm = {{20{Simm12[11]}}, Simm12};
+            extended_Bimm = {{19{Bimm13[12]}}, Bimm13};
+            extended_Uimm = {Uimm20, 12'b0};
+            extended_Jimm = {{11{Jimm21[20]}}, Jimm21};
+        end else begin
+            extended_Iimm = {20'b0, Iimm12};
+            extended_Simm = {20'b0, Simm12};
+            extended_Bimm = {19'b0, Bimm13};
+            extended_Uimm = {Uimm20, 12'b0};
+            extended_Jimm = {11'b0, Jimm21};
+        end
+        case (opcode)  
+            `OPCODE_LUI: Imm_extended = extended_Uimm;
+            `OPCODE_AUIPC: Imm_extended = extended_Uimm;
+            `OPCODE_JAL: Imm_extended = extended_Jimm;
+            `OPCODE_JALR: Imm_extended = extended_Iimm;
+            `OPCODE_BRANCH: Imm_extended = extended_Bimm;
+            `OPCODE_LOAD: Imm_extended = extended_Iimm;
+            `OPCODE_STORE: Imm_extended = extended_Simm;
+            `OPCODE_IMMEDIATE: Imm_extended = extended_Iimm;
+            default: Imm_extended = 32'b0;
+        endcase
+    end
+endmodule // Extender
+
+// And gate
+module AndGate(
+    input a,
+    input b,
+    output out
+    );
+
+    assign out = a & b;
+endmodule // AndGate
+
+// Immediate Mux
+module MuxI(
+    input [31:0] a,
+    input [31:0] b,
+    input sel,
+    output reg [31:0] out
+    );
+
+    always @(*) begin
+        if (sel) begin
+            out = b;
+        end else begin
+            out = a;
+        end
+    end
+endmodule // MuxI
+
+// Adder for PC
+module AdderPC(
+    input [31:0] PC,
+    output reg [31:0] out
+    );
+
+    always @(*) begin
+        out = PC + 4;
+    end
+endmodule
+
+// Adder for PC and immediate
+module AdderPCImm(
+    input [31:0] PC_Plus_4,
+    input [31:0] Imm,
+    output reg [31:0] PC_Imm
+    );
+
+    always @(*) begin
+        PC_Imm = PC_Plus_4 + Imm;
+    end
 endmodule
