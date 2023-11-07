@@ -103,9 +103,10 @@ module SingleCycleCPU(halt, clk, rst);
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 0) HALT
     // Only support R-TYPE ADD and SUB
-    //////// Need to extend for all functions -- do at end
     assign halt = !((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) &&
             ((funct7 == `AUX_FUNC_ADD) || (funct7 == `AUX_FUNC_SUB)));
+
+
             
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 1) FETCH
@@ -159,17 +160,18 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 8) we have PC, PC+4, and immediate
-    AdderPCImm API1(.PC_Plus_4(PC_Plus_4), .Imm(Imm_extended), .PC_Imm(PC_Imm));
-    AndGate AG1(.a(), .b(1'b1), .out(nPC_sel));
-    MuxI MUXI2(.a(PC_Plus_4), .b(PC_Imm), .sel(nPC_sel), .out(NPC));
-    
+    AdderPCImm API1(.PC(PC), .Imm(Imm_extended), .PC_Imm(PC_Imm));
+    MuxB MUXB1(.a(PC), .b(PC_Imm), .sel(nPC_sel), .out(BranchPC));
+    MuxJ MUXJ1(.a(BranchPC), .b(), .sel(nPC_sel), .out(NPC));
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 9) Memory
-    DataMem DMEM(.Addr(ALUresult), .Size(MemSize), .DataIn(StoreData), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
+    DataMem DMEM(.Addr(ALUresult), .Size(MemSize), .DataIn(Rdata2), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 10) Update Regs
-    RegFile RF3()
+    RegFile RF3(.AddrA(Rsrc1), .DataOutA(Rdata1), 
+            .AddrB(Rsrc2), .DataOutB(Rdata2), 
+            .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 11) PC Update
     Reg PC_REG(.Din(NPC), .Qout(PC), .WEN(1'b0), .CLK(clk), .RST(rst));
@@ -431,6 +433,42 @@ module MuxI(
     end
 endmodule // MuxI
 
+// Branch Mux
+module MuxB(
+    input [31:0] a,
+    input [31:0] b,
+    input [1:0] sel,
+    output reg [31:0] out
+    );
+
+    always @(*) begin
+        case (sel)
+            2'b00: out = a;
+            2'b01: out = b;
+            2'b10: out = a;
+            2'b11: out = a;
+        endcase
+    end
+endmodule // MuxB
+
+// jump Mux
+module MuxJ(
+    input [31:0] a,
+    input [31:0] b,
+    input [1:0] sel,
+    output reg [31:0] out
+    );
+
+    always @(*) begin
+        case (sel)
+            2'b00: out = a;
+            2'b01: out = a;
+            2'b10: out = b;
+            2'b11: out = b;
+        endcase
+    end
+endmodule // MuxJ
+
 // Adder for PC
 module AdderPC(
     input [31:0] PC,
@@ -444,12 +482,12 @@ endmodule
 
 // Adder for PC and immediate
 module AdderPCImm(
-    input [31:0] PC_Plus_4,
+    input [31:0] PC,
     input [31:0] Imm,
     output reg [31:0] PC_Imm
     );
 
     always @(*) begin
-        PC_Imm = PC_Plus_4 + Imm;
+        PC_Imm = PC + Imm;
     end
 endmodule
