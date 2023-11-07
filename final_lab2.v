@@ -90,8 +90,10 @@ module SingleCycleCPU(halt, clk, rst);
 
     wire [31:0] NPC, PC_Plus_4;
     wire PCSrc; //
-    wire [31:0] BranchAnd; //
+    wire BranchAnd; //
     wire [6:0]  opcode;
+    wire [1:0] nPC_sel; //
+    wire [3:0] ALUctr; //   
     
 
     // needed for instruction decode
@@ -99,16 +101,40 @@ module SingleCycleCPU(halt, clk, rst);
     wire [2:0]  funct3;
     wire [11:0] Iimm12;
     wire [11:0] Simm12;
-    wire [11:0] Bimm13;
+    wire [12:0] Bimm13;
     wire [19:0] Uimm20;
-    wire [19:0] Jimm21;
+    wire [20:0] Jimm21;
+
+    wire [31:0] extended_Iimm;
+    wire [31:0] extended_Simm;
+    wire [31:0] extended_Bimm;
+    wire [31:0] extended_Uimm;
+    wire [31:0] extended_Jimm;
+    wire [31:0] Imm_extended;
+
+    wire [31:0] ALUop2;
+    wire [31:0] ALUresult;
+
+    wire [31:0] PC_Imm;
+    
+
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 0) HALT
     // Only support R-TYPE ADD and SUB
-    assign halt = !((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) &&
-            ((funct7 == `AUX_FUNC_ADD) || (funct7 == `AUX_FUNC_SUB)));
+    // assign halt = !((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) &&
+    //         ((funct7 == `AUX_FUNC_ADD) || (funct7 == `AUX_FUNC_SUB)));
 
+    // assign halt = !((opcode == `OPCODE_COMPUTE) || 
+    //             (opcode == `OPCODE_LOAD && Valid_Addr) || // Define what a valid address is
+    //             (opcode == `OPCODE_STORE && (funct3 == 3'b000 || funct3 == 3'b001 || funct3 == 3'b010) && Valid_Addr) ||
+    //             (opcode == `OPCODE_BRANCH && (funct3 != 3'b010 && funct3 != 3'b011) && Valid_PC) ||
+    //             ((opcode == `OPCODE_JAL || opcode == `OPCODE_LUI || opcode == `OPCODE_AUIPC) && Valid_PC) ||
+    //             (opcode == `OPCODE_JALR && funct3 == 3'b000 && Valid_PC) ||
+    //             Valid_PC);
+
+    assign halt = !
+        ((opcode == `OPCODE_COMPUTE) ||  (PC > (0x20))); // Halt when PC is greater than 64
 
             
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
@@ -137,7 +163,7 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 4) Read Regs a,b from file
-    RegFile RF1(.AddrA(Rsrc1), .DataOutA(Rdata1), 
+    RegFile RF(.AddrA(Rsrc1), .DataOutA(Rdata1), 
             .AddrB(Rsrc2), .DataOutB(Rdata2), 
             .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
 
@@ -453,7 +479,7 @@ module AdderPC(
     );
 
     always @(*) begin
-        out = PC + 4;
+        out = PC + 32'h20;
     end
 endmodule
 
