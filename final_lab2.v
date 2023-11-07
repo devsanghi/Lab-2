@@ -133,8 +133,7 @@ module SingleCycleCPU(halt, clk, rst);
     //             (opcode == `OPCODE_JALR && funct3 == 3'b000 && Valid_PC) ||
     //             Valid_PC);
 
-    assign halt = !
-        ((opcode == `OPCODE_COMPUTE) ||  (PC > (0x20))); // Halt when PC is greater than 64
+    assign halt = (PC > 32'h80); // Halt when PC is greater than 32
 
             
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
@@ -356,8 +355,8 @@ module ALU(
     wire signed [31:0] signed_b = b;
 
     // Detect overflow for addition and subtraction
-    wire overflow_add = (~(a[31] ^ b[31]) & (a[31] ^ result[31]));
-    wire overflow_sub = ((a[31] ^ b[31]) & (a[31] ^ result[31]));
+    // wire overflow_add = (~(a[31] ^ b[31]) & (a[31] ^ result[31]));
+    // wire overflow_sub = ((a[31] ^ b[31]) & (a[31] ^ result[31]));
 
     // Determine the result based on the ALU control signal
     always @(*) begin
