@@ -85,10 +85,12 @@ module SingleCycleCPU(halt, clk, rst);
     wire        MemWrEn;
     
     wire [4:0]  Rsrc1, Rsrc2, Rdst;
-    wire [31:0] Rdata1, Rdata2, RWrdata;
+    wire [31:0] Rdata1, Rdata2, RWrdata, RWrdata_0;
     wire        RWrEn;
 
     wire [31:0] NPC, PC_Plus_4;
+    wire PCSrc; //
+    wire [31:0] BranchAnd; //
     wire [6:0]  opcode;
 
     // needed for instruction decode
@@ -112,15 +114,7 @@ module SingleCycleCPU(halt, clk, rst);
     // 1) FETCH
     // System State (everything is neg assert)
     InstMem IMEM(.Addr(PC), .Size(`SIZE_WORD), .DataOut(InstWord), .CLK(clk));
-    // DataMem DMEM(.Addr(DataAddr), .Size(MemSize), .DataIn(StoreData), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
-
-    // RegFile RF(.AddrA(Rsrc1), .DataOutA(Rdata1), 
-    //         .AddrB(Rsrc2), .DataOutB(Rdata2), 
-    //         .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
-
-    // PC Update
-    AdderPC APC1(.PC(PC), .out(PC_Plus_4));
-
+   
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 2) DECODE
     assign opcode = InstWord[6:0];   
@@ -132,7 +126,7 @@ module SingleCycleCPU(halt, clk, rst);
     assign Iimm12 = InstWord[31:20]; // I-Type
     assign Simm12 = {InstWord[31:25], InstWord[11:7]}; // S-Type
     assign Bimm13 = {InstWord[31], InstWord[7], InstWord[30:25], InstWord[11:8], 1'b0}; // B-Type
-    assign Uimm20 = {InstWord[31:12], 12'b0}; // U-Type
+    assign Uimm20 = {InstWord[31:12]}; // U-Type
     assign Jimm21 = {InstWord[31], InstWord[19:12], InstWord[20], InstWord[30:21], 1'b0}; // J-Type
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
@@ -160,18 +154,28 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 8) we have PC, PC+4, and immediate
+    AdderPC APC1(.PC(PC), .out(PC_Plus_4));
+
+    AndGate AND1(.a(nPC_sel[0]), .b(zero), .out(BranchAnd));
+    OrGate OR1(.a(nPC_sel[1]), .b(BranchAnd), .out(PCSrc));
+
     AdderPCImm API1(.PC(PC), .Imm(Imm_extended), .PC_Imm(PC_Imm));
-    MuxB MUXB1(.a(PC), .b(PC_Imm), .sel(nPC_sel), .out(BranchPC));
-    MuxJ MUXJ1(.a(BranchPC), .b(), .sel(nPC_sel), .out(NPC));
+    MuxI MUXI2(.a(PC_Plus_4), .b(PC_Imm), .sel(PCSrc), .out(NPC));
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 9) Memory
     DataMem DMEM(.Addr(ALUresult), .Size(MemSize), .DataIn(Rdata2), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
 
+    // load, data out is info from mem to be put into rd
+    // store, data out does nothing
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 10) Update Regs
+    MuxI MUXI3(.a(ALUresult), .b(DataWord), .sel(MemtoReg), .out(RWrdata_0));
+    MuxI MUXI4(.a(RWrdata_0), .b(PC_Plus_4), .sel(nPC_sel[1]), .out(RWrdata));
+
     RegFile RF3(.AddrA(Rsrc1), .DataOutA(Rdata1), 
             .AddrB(Rsrc2), .DataOutB(Rdata2), 
-            .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));
+            .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));   
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 11) PC Update
     Reg PC_REG(.Din(NPC), .Qout(PC), .WEN(1'b0), .CLK(clk), .RST(rst));
@@ -415,6 +419,16 @@ module AndGate(
 
     assign out = a & b;
 endmodule // AndGate
+
+// Or gate
+module OrGate(
+    input a,
+    input b,
+    output out
+    );
+
+    assign out = a | b;
+endmodule
 
 // Immediate Mux
 module MuxI(
