@@ -142,8 +142,6 @@ module SingleCycleCPU(halt, clk, rst);
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) && (funct7 == `AUX_FUNC_ADD)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) && (funct7 == `AUX_FUNC_SUB)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLT)) ||
-                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLL)) ||
-                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SRL)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLTU)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_XOR)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_OR)) ||
@@ -628,31 +626,4 @@ module Reg(Din, Qout, WEN, CLK, RST);
 	 Qout <= Din;
   
 endmodule // Reg
-
-// Branch Control Set
-module BranchControlSet(
-    input [6:0] opcode,
-    input [2:0] funct3,
-    input zero,
-    input negative,
-    output reg BranchControlSignal
-    );
-
-    always @(*) begin
-        case (opcode)
-            `OPCODE_BRANCH: begin
-                case (funct3)
-                    `FUNC_BEQ: BranchControlSignal = zero;
-                    `FUNC_BNE: BranchControlSignal = ~zero;
-                    `FUNC_BLT: BranchControlSignal = negative;
-                    `FUNC_BGE: BranchControlSignal = ~negative;
-                    `FUNC_BLTU: BranchControlSignal = negative;
-                    `FUNC_BGEU: BranchControlSignal = ~negative;
-                endcase
-            end
-            default: BranchControlSignal = 0;
-        endcase
-    end
-
-endmodule // BranchControlSet
 
