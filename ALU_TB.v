@@ -2,9 +2,9 @@
 
 module ALU_tb;
 
-    reg [63:0] a, b;
+    reg [31:0] a, b;
     reg [3:0] ALUctr;
-    wire [63:0] result;
+    wire [31:0] result;
     wire zero, negative;
 
     // Instantiate the ALU module
@@ -17,8 +17,10 @@ module ALU_tb;
 
     // Test case storage
     reg [3:0] test_ALUctr;
-    reg [63:0] test_opA, test_opB;
-    reg [63:0] test_expected_result;
+    reg [31:0] test_opA, test_opB;
+    reg [31:0] test_expected_result;
+
+    integer count = 0;
 
     initial begin
         // Open file with test vectors
@@ -37,12 +39,14 @@ module ALU_tb;
                 b = test_opB;
                 #10; // Wait for ALU to process
                 // Check the result and flags
-                if ((result !== test_expected_result) || (zero !== (result == 0)) || (negative !== result[63])) begin
+                $display("Test #%d", count);
+                if ((result !== test_expected_result) || (zero !== (result == 0)) || (negative !== result[31])) begin
                     $display("Test failed: ALUctr=%b, opA=%h, opB=%h, expected=%h, got=%h", test_ALUctr, test_opA, test_opB, test_expected_result, result);
                 end else begin
                     $display("Test passed: ALUctr=%b, opA=%h, opB=%h", test_ALUctr, test_opA, test_opB);
                 end
-                //#10; // Wait time between tests
+                //#10; // Wait time between tests   
+                count = count + 1;
             end
         end
 

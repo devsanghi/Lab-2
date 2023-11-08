@@ -14,18 +14,18 @@
 `define ALU_NOP   4'b1111
 
 module ALU(
-    input [63:0] a,
-    input [63:0] b,
+    input [31:0] a,
+    input [31:0] b,
     input [3:0] ALUctr,
-    output reg [63:0] result,
+    output reg [31:0] result,
     output zero,
     output negative
     // output overflow do we need overflow??
     );
 
     // Internal signals for signed and unsigned comparisons
-    wire signed [63:0] signed_a = a;
-    wire signed [63:0] signed_b = b;
+    wire signed [31:0] signed_a = a;
+    wire signed [31:0] signed_b = b;
 
     // Detect overflow for addition and subtraction
     // wire overflow_add = (~(a[31] ^ b[31]) & (a[31] ^ result[31]));
@@ -56,9 +56,9 @@ module ALU(
     end
 
     // Zero flag
-    assign zero = (result == 64'b0);
+    assign zero = (result == 32'b0);
 
     // Negative flag
-    assign negative = result[63];
+    assign negative = result[31];
 
 endmodule
