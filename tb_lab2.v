@@ -29,7 +29,8 @@ module tb;
       #0 $readmemh("regs_in.hex", CPU.RF.Mem);
 
       // Feel free to modify to inspect whatever you want
-      #0 $monitor($time,, "PC=%08x IR=%08x", CPU.PC, CPU.InstWord);
+      // #0 $monitor($time,, "PC=%08x IR=%08x", CPU.PC, CPU.InstWord);
+      #0 $monitor($time,, "Rdata1=%08x, Rdata2 = %08x, ALUop2=%08x, ALUres = %08x, NPC = %08x, Rdst=%04x, RWdata=%04x RWrEn=%04x, clk=%04x", CPU.Rdata1, CPU.Rdata2, CPU.ALUop2, CPU.ALUresult, CPU.NPC, CPU.Rdst, CPU.RWrdata, CPU.RWrEn, CPU.clk);
 
       // Exits when halt is asserted
       $display("Starting simulation at time %t", $time);

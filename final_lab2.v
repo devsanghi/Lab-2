@@ -121,19 +121,31 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 0) HALT
-    // Only support R-TYPE ADD and SUB
-    // assign halt = !((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) &&
-    //         ((funct7 == `AUX_FUNC_ADD) || (funct7 == `AUX_FUNC_SUB)));
-
-    // assign halt = !((opcode == `OPCODE_COMPUTE) || 
-    //             (opcode == `OPCODE_LOAD && Valid_Addr) || // Define what a valid address is
-    //             (opcode == `OPCODE_STORE && (funct3 == 3'b000 || funct3 == 3'b001 || funct3 == 3'b010) && Valid_Addr) ||
-    //             (opcode == `OPCODE_BRANCH && (funct3 != 3'b010 && funct3 != 3'b011) && Valid_PC) ||
-    //             ((opcode == `OPCODE_JAL || opcode == `OPCODE_LUI || opcode == `OPCODE_AUIPC) && Valid_PC) ||
-    //             (opcode == `OPCODE_JALR && funct3 == 3'b000 && Valid_PC) ||
-    //             Valid_PC);
-
-    assign halt = (PC > 32'h80); // Halt when PC is greater than 32
+    
+    assign halt = !((opcode == `OPCODE_LUI) ||
+                (opcode == `OPCODE_AUIPC) ||
+                ((opcode == `OPCODE_JAL) && ($signed(PC + extended_Jimm) % 4 == 0) && ($signed(PC + extended_Jimm) >= 0) && ($signed(PC + extended_Jimm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_JALR) && ($signed(Rdata1 + extended_Iimm) % 4 == 0) && ($signed(Rdata1 + extended_Iimm) >= 0) && ($signed(Rdata1 + extended_Iimm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_BRANCH) && ($signed(PC + extended_Bimm) % 4 == 0) && ($signed(PC + extended_Bimm) >= 0) && ($signed(PC + extended_Bimm) <= 16'h0400) && 
+                (funct3 == `FUNC_BEQ || funct3 == `FUNC_BGE || funct3 == `FUNC_BGEU || funct3 == `FUNC_BLT || funct3 == `FUNC_BLTU || funct3 == `FUNC_BNE)) ||
+                ((opcode == `OPCODE_LOAD) && (funct3 == `FUNC_LB) && ($signed(Rdata1 + extended_Iimm) >= 0) && ($signed(Rdata1 + extended_Iimm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_LOAD) && (funct3 == `FUNC_LH || funct3 == `FUNC_LHU) && ($signed(Rdata1 + extended_Iimm) % 2 == 0) && ($signed(Rdata1 + extended_Iimm) >= 0) && ($signed(Rdata1 + extended_Iimm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_LOAD) && (funct3 == `FUNC_LW) && ($signed(Rdata1 + extended_Iimm) % 4 == 0) && ($signed(Rdata1 + extended_Iimm) >= 0) && ($signed(Rdata1 + extended_Iimm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_LOAD) && (funct3 == `FUNC_LBU) && ($signed(Rdata1 + extended_Simm) >= 0) && ($signed(Rdata1 + extended_Simm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_STORE) && (funct3 == `FUNC_SB) && ($signed(Rdata1 + extended_Simm) >= 0) && ($signed(Rdata1 + extended_Simm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_STORE) && (funct3 == `FUNC_SH) && ($signed(Rdata1 + extended_Simm) % 2 == 0) && ($signed(Rdata1 + extended_Simm) >= 0) && ($signed(Rdata1 + extended_Simm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_STORE) && (funct3 == `FUNC_SW) && ($signed(Rdata1 + extended_Simm) % 4 == 0) && ($signed(Rdata1 + extended_Simm) >= 0) && ($signed(Rdata1 + extended_Simm) <= 16'h0400)) ||
+                ((opcode == `OPCODE_IMMEDIATE) && (funct3 == `FUNC_ADDI || funct3 == `FUNC_SLTI || funct3 == `FUNC_XORI || funct3 == `FUNC_ORI || funct3 == `FUNC_ANDI)) ||
+                ((opcode == `OPCODE_IMMEDIATE) && (funct3 == `FUNC_SLLI) && (funct7 == 7'b0000000)) ||
+                ((opcode == `OPCODE_IMMEDIATE) && (funct3 == `FUNC_SRLI) && (funct7 == `AUX_FUNC_SRLI)) ||
+                ((opcode == `OPCODE_IMMEDIATE) && (funct3 == `FUNC_SRLI) && (funct7 == `AUX_FUNC_SRAI)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) && (funct7 == `AUX_FUNC_ADD)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) && (funct7 == `AUX_FUNC_SUB)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLT)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLTU)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_XOR)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_OR)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_AND) && (funct7 == 7'b0000000)));
 
             
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
@@ -157,9 +169,11 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 3) CONTROL
-    ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
-            .nPC_sel(nPC_sel), .RWrEn(RWrEn), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
+    // ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
+    //         .nPC_sel(nPC_sel), .RWrEn(RWrEn), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
 
+    ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
+            .nPC_sel(nPC_sel), .RWrEn(RWrEn), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 4) Read Regs a,b from file
     RegFile RF(.AddrA(Rsrc1), .DataOutA(Rdata1), 
@@ -220,7 +234,7 @@ module ControlUnit(
     output reg [1:0]  MemSize,
     output reg [1:0] nPC_sel,
     output reg RWrEn,
-    output reg RegDst,
+    //output reg RegDst,
     output reg ExtOp,
     output reg ALUSrc,
     output reg [3:0] ALUctr,
@@ -231,9 +245,10 @@ module ControlUnit(
     // Control signal settings for different instruction types
     always @(*) begin
         // Default control signal values
+        MemSize = `SIZE_WORD;
         nPC_sel = 2'b00;
-        RWrEn = 0;
-        RegDst = 0;
+        RWrEn = 1;
+        // RegDst = 0;
         ExtOp = 1; // Assume sign extension by default
         ALUSrc = 0;
         ALUctr = `ALU_ADD; // Default ALU operation is ADD
@@ -242,35 +257,33 @@ module ControlUnit(
 
         case (opcode)
             `OPCODE_LUI: begin
-                RWrEn = 1;
+                RWrEn = 0;
                 ALUSrc = 1; // Source is immediate
                 ALUctr = `ALU_NOP; // No operation needed, just load immediate
-                MemtoReg = 0; // Select ALU result
+                // MemtoReg = 0; // Select ALU result
             end
             `OPCODE_AUIPC: begin
-                RWrEn = 1;
+                RWrEn = 0;
                 ALUSrc = 1; // Source is immediate
                 ALUctr = `ALU_ADD; // Add to PC
-                MemtoReg = 0; // Select ALU result
+                // MemtoReg = 0; // Select ALU result
             end
             `OPCODE_JAL: begin
                 nPC_sel = 2'b10; // JAL address
-                RWrEn = 1;
-                RegDst = 1; // Write to rd
-                ALUctr = `ALU_ADD; // PC + 4
-                MemtoReg = 0; // Select ALU result
+                RWrEn = 0;
+                // RegDst = 1; // Write to rd
+                // ALUctr = `ALU_ADD; // PC + 4
+                // MemtoReg = 0; // Select ALU result
             end
             `OPCODE_JALR: begin
                 nPC_sel = 2'b11; // JALR address
-                RWrEn = 1;
-                RegDst = 1; // Write to rd
-                ALUctr = `ALU_ADD; // PC + 4
-                MemtoReg = 0; // Select ALU result
+                RWrEn = 0;
+                // RegDst = 1; // Write to rd
+                // ALUctr = `ALU_ADD; // PC + 4
+                // MemtoReg = 0; // Select ALU result
             end
             `OPCODE_BRANCH: begin
                 nPC_sel = 2'b01; // Branch address
-                // Branch instructions do not write to the register file
-                RWrEn = 0;
                 // Select the branch decision control signal based on funct3
                 case (funct3)
                     `FUNC_BEQ: ALUctr = `ALU_SUB; // For beq, subtract and check zero
@@ -280,9 +293,17 @@ module ControlUnit(
                     `FUNC_BLTU: ALUctr = `ALU_SLTU; // For bltu, set less than unsigned
                     `FUNC_BGEU: ALUctr = `ALU_SLTU; // For bgeu, set less than unsigned and negate
                 endcase
+                case (funct3)
+                    `FUNC_BEQ: ExtOp = 1;
+                    `FUNC_BNE: ExtOp = 1;
+                    `FUNC_BLT: ExtOp = 1;
+                    `FUNC_BGE: ExtOp = 1;
+                    `FUNC_BLTU: ExtOp = 0;
+                    `FUNC_BGEU: ExtOp = 0;
+                endcase
             end
             `OPCODE_LOAD: begin
-                RWrEn = 1;
+                RWrEn = 0;
                 ALUSrc = 1; // Load uses immediate
                 MemtoReg = 1; // Load data from memory
                 case (funct3)
@@ -291,6 +312,13 @@ module ControlUnit(
                     `FUNC_LW: MemSize = `SIZE_WORD;
                     `FUNC_LBU: MemSize = `SIZE_BYTE;
                     `FUNC_LHU: MemSize = `SIZE_HWORD;
+                endcase
+                case (funct3)
+                    `FUNC_LB: ExtOp = 1;
+                    `FUNC_LH: ExtOp = 1;
+                    `FUNC_LW: ExtOp = 1;
+                    `FUNC_LBU: ExtOp = 0;
+                    `FUNC_LHU: ExtOp = 0;
                 endcase
                 // ALU operation is ADD for address calculation
             end
@@ -305,7 +333,7 @@ module ControlUnit(
                 // ALU operation is ADD for address calculation
             end
             `OPCODE_IMMEDIATE: begin
-                RWrEn = 1;
+                RWrEn = 0;
                 ALUSrc = 1; // I-type uses immediate
                 // Decoding the exact ALU operation based on funct3 and funct7
                 case (funct3)
@@ -319,8 +347,8 @@ module ControlUnit(
                 endcase
             end
             `OPCODE_COMPUTE: begin
-                RWrEn = 1;
-                RegDst = 1; // R-type uses rd
+                RWrEn = 0;
+                //RegDst = 1; // R-type uses rd
                 // Decoding the exact ALU operation based on funct3 and funct7
                 case (funct3)
                     `FUNC_ADD: ALUctr = (funct7 == `AUX_FUNC_SUB) ? `ALU_SUB : `ALU_ADD;

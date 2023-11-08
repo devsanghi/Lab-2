@@ -86,7 +86,7 @@ module ControlUnit(
     // Control signal settings for different instruction types
     always @(*) begin
         // Default control signal values
-        MemSize = `SIZE_WORD; ///////////////////////////////////////////
+        MemSize = `SIZE_WORD;
         nPC_sel = 2'b00;
         RWrEn = 0;
         RegDst = 0;
@@ -126,7 +126,6 @@ module ControlUnit(
             `OPCODE_BRANCH: begin
                 nPC_sel = 2'b01; // Branch address
                 // Branch instructions do not write to the register file
-                RWrEn = 0; //////////////////// delete
                 // Select the branch decision control signal based on funct3
                 case (funct3)
                     `FUNC_BEQ: ALUctr = `ALU_SUB; // For beq, subtract and check zero
