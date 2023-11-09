@@ -14,6 +14,9 @@ module tb;
 
    initial begin
       // Clock and reset setup
+      $dumpfile("test.vcd");
+      $dumpvars(0);
+
       #0 rst = 1; clk = 0;
       $display("Initial reset and clock setup at time %t", $time);
       
@@ -26,12 +29,13 @@ module tb;
       // Load program
       $display("Loading memory and register contents at time %t", $time);
       #0 $readmemh("mem_in.hex", CPU.IMEM.Mem);
+      #0 $readmemh("mem_in.hex", CPU.DMEM.Mem);/////
       #0 $readmemh("regs_in.hex", CPU.RF.Mem);
 
       // Feel free to modify to inspect whatever you want
       // #0 $monitor($time,, "PC=%08x IR=%08x", CPU.PC, CPU.InstWord);
-      #0 $monitor($time,, "Rdata1=%08x, Rdata2 = %08x, ALUop2=%08x, ALUres = %08x, NPC = %08x, Rdst=%04x, RWdata=%04x RWrEn=%04x, clk=%04x", CPU.Rdata1, CPU.Rdata2, CPU.ALUop2, CPU.ALUresult, CPU.NPC, CPU.Rdst, CPU.RWrdata, CPU.RWrEn, CPU.clk);
-
+      //#0 $monitor($time,, "Rsrc1=%04x, Rdata1=%08x, Rsrc2 = %04x, Rdata2 = %08x, Simm12 = %04x, extended_Simm = %08x, ALUop2=%08x, ALUres = %08x, NPC = %08x, Rdst=%04x, RWdata=%04x, DataWord = %08x", CPU.Rsrc1, CPU.Rdata1, CPU.Rsrc2, CPU.Rdata2, CPU.Simm12, CPU.extended_Simm, CPU.ALUop2, CPU.ALUresult, CPU.NPC, CPU.Rdst, CPU.RWrdata, CPU.DataWord);
+      #0 $monitor($time,, "Rsrc1=%04x, Rdata1=%08x, Rsrc2 = %04x, Rdata2 = %08x, pc = %08X, ALUop2=%08x, ALUres = %08x, NPC = %08x, Rdst=%04x, RWdata=%04x, DataWord = %08x, zero = %04x, neg = %04x, immext: %04x, pcimm: %04x, memsize: %04x, wren: %04x", CPU.Rsrc1, CPU.Rdata1, CPU.Rsrc2, CPU.Rdata2, CPU.PC, CPU.ALUop2, CPU.ALUresult, CPU.NPC, CPU.Rdst, CPU.RWrdata, CPU.DataWord, CPU.zero, CPU.negative, CPU.Imm_extended, CPU.Bimm13, CPU.MemSize, CPU.MemWrEn);
       // Exits when halt is asserted
       $display("Starting simulation at time %t", $time);
       wait(halt);

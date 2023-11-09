@@ -89,11 +89,12 @@ module SingleCycleCPU(halt, clk, rst);
     wire        RWrEn;
 
     wire [31:0] NPC, PC_Plus_4;
-    wire PCSrc; //
-    wire BranchAnd; //
+    wire PCSrc; // Added
+    wire BranchAnd; // Added
     wire [6:0]  opcode;
-    wire [1:0] nPC_sel; //
-    wire [3:0] ALUctr; //   
+    wire [1:0] nPC_sel; // Added
+    wire [3:0] ALUctr; // Added
+    wire [31:0] NPC_noJALR, PC_JALR; // Added
     
 
     // needed for instruction decode
@@ -116,13 +117,14 @@ module SingleCycleCPU(halt, clk, rst);
     wire [31:0] ALUresult;
 
     wire [31:0] PC_Imm;
+    wire [31:0] ALUresult_0; //
+    wire [31:0] AUIPC_output; // 
+
     
-
-
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // 0) HALT
-    
-    assign halt = !((opcode == `OPCODE_LUI) ||
+    assign halt = 
+    !((opcode == `OPCODE_LUI) ||
                 (opcode == `OPCODE_AUIPC) ||
                 ((opcode == `OPCODE_JAL) && ($signed(PC + extended_Jimm) % 4 == 0) && ($signed(PC + extended_Jimm) >= 0) && ($signed(PC + extended_Jimm) <= 16'h0400)) ||
                 ((opcode == `OPCODE_JALR) && ($signed(Rdata1 + extended_Iimm) % 4 == 0) && ($signed(Rdata1 + extended_Iimm) >= 0) && ($signed(Rdata1 + extended_Iimm) <= 16'h0400)) ||
@@ -142,11 +144,12 @@ module SingleCycleCPU(halt, clk, rst);
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) && (funct7 == `AUX_FUNC_ADD)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_ADD) && (funct7 == `AUX_FUNC_SUB)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLT)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLL)) ||
+                ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SRL)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_SLTU)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_XOR)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_OR)) ||
                 ((opcode == `OPCODE_COMPUTE) && (funct3 == `FUNC_AND) && (funct7 == 7'b0000000)));
-
             
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 1) FETCH
@@ -169,11 +172,9 @@ module SingleCycleCPU(halt, clk, rst);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 3) CONTROL
-    // ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
-    //         .nPC_sel(nPC_sel), .RWrEn(RWrEn), .RegDst(RegDst), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
-
     ControlUnit CUNIT1(.opcode(opcode), .funct3(funct3), .funct7(funct7), .MemSize(MemSize),
             .nPC_sel(nPC_sel), .RWrEn(RWrEn), .ExtOp(ExtOp), .ALUSrc(ALUSrc), .ALUctr(ALUctr), .MemWrEn(MemWrEn), .MemtoReg(MemtoReg));
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 4) Read Regs a,b from file
     RegFile RF(.AddrA(Rsrc1), .DataOutA(Rdata1), 
@@ -184,38 +185,41 @@ module SingleCycleCPU(halt, clk, rst);
     // 5) Extender
     Extender EX1(.Iimm12(Iimm12), .Simm12(Simm12), .Bimm13(Bimm13), .Uimm20(Uimm20), .Jimm21(Jimm21), .ExtOp(ExtOp), .opcode(opcode),
             .extended_Iimm(extended_Iimm), .extended_Simm(extended_Simm), .extended_Bimm(extended_Bimm), .extended_Uimm(extended_Uimm), .extended_Jimm(extended_Jimm), .Imm_extended(Imm_extended));
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 6) Mux for op2 or immediate
     MuxI MUXI1(.a(Rdata2), .b(Imm_extended), .sel(ALUSrc), .out(ALUop2));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 7) Execute
-    ALU ALU1(.a(Rdata1), .b(ALUop2), .ALUctr(ALUctr), .result(ALUresult), .zero(zero), .negative(negative));//, .overflow(overflow));
+    ALU ALU1(.a(Rdata1), .b(ALUop2), .ALUctr(ALUctr), .result(ALUresult_0), .zero(zero), .negative(negative));
+    AdderPCImm API3(.PC(PC), .Imm(ALUresult_0), .PC_Imm(AUIPC_output));
+    MuxAUIPC AUIPCM1(.a(ALUresult_0), .b(AUIPC_output), .opcode_sel(opcode), .out(ALUresult));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 8) we have PC, PC+4, and immediate
     AdderPC APC1(.PC(PC), .out(PC_Plus_4));
 
-    AndGate AND1(.a(nPC_sel[0]), .b(zero), .out(BranchAnd));
+    BranchControlSet BCS1(.opcode(opcode), .funct3(funct3), .zero(zero), .negative(negative), .BranchControlSignal(BranchControlSignal));
+
+    AndGate AND1(.a(BranchControlSignal), .b(zero), .out(BranchAnd));
     OrGate OR1(.a(nPC_sel[1]), .b(BranchAnd), .out(PCSrc));
 
     AdderPCImm API1(.PC(PC), .Imm(Imm_extended), .PC_Imm(PC_Imm));
-    MuxI MUXI2(.a(PC_Plus_4), .b(PC_Imm), .sel(PCSrc), .out(NPC));
+    MuxI MUXI2(.a(PC_Plus_4), .b(PC_Imm), .sel(PCSrc), .out(NPC_noJALR));
+
+    AdderPCImm API2(.PC(PC_Imm), .Imm(Rdata1), .PC_Imm(PC_JALR));
+    MuxJALR MUXJALR1(.a(NPC_noJALR), .b(PC_JALR), .sel(nPC_sel), .out(NPC));
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 9) Memory
     DataMem DMEM(.Addr(ALUresult), .Size(MemSize), .DataIn(Rdata2), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
-
-    // load, data out is info from mem to be put into rd
-    // store, data out does nothing
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 10) Update Regs
     MuxI MUXI3(.a(ALUresult), .b(DataWord), .sel(MemtoReg), .out(RWrdata_0));
     MuxI MUXI4(.a(RWrdata_0), .b(PC_Plus_4), .sel(nPC_sel[1]), .out(RWrdata));
 
-    // RegFile RF2(.AddrA(Rsrc1), .DataOutA(Rdata1), 
-    //         .AddrB(Rsrc2), .DataOutB(Rdata2), 
-    //         .AddrW(Rdst), .DataInW(RWrdata), .WenW(RWrEn), .CLK(clk));   
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 11) PC Update
     Reg PC_REG(.Din(NPC), .Qout(PC), .WEN(1'b0), .CLK(clk), .RST(rst));
@@ -252,7 +256,7 @@ module ControlUnit(
         ExtOp = 1; // Assume sign extension by default
         ALUSrc = 0;
         ALUctr = `ALU_ADD; // Default ALU operation is ADD
-        MemWrEn = 0;
+        MemWrEn = 1;
         MemtoReg = 0;
 
         case (opcode)
@@ -323,7 +327,7 @@ module ControlUnit(
                 // ALU operation is ADD for address calculation
             end
             `OPCODE_STORE: begin
-                MemWrEn = 1;
+                MemWrEn = 0;
                 ALUSrc = 1; // Store uses immediate
                 case (funct3)
                     `FUNC_SB: MemSize = `SIZE_BYTE;
@@ -345,6 +349,11 @@ module ControlUnit(
                     `FUNC_SLLI: ALUctr = `ALU_SLL;
                     `FUNC_SRLI: ALUctr = (funct7 == `AUX_FUNC_SRAI) ? `ALU_SRA : `ALU_SRL;
                 endcase
+                case (funct3)
+                    `FUNC_SLLI: ExtOp = 0;
+                    `FUNC_SRLI: ExtOp = (funct7 == `AUX_FUNC_SRAI) ? 0 : 0;
+                endcase
+
             end
             `OPCODE_COMPUTE: begin
                 RWrEn = 0;
@@ -359,6 +368,10 @@ module ControlUnit(
                     `FUNC_SRL: ALUctr = (funct7 == `AUX_FUNC_SRA) ? `ALU_SRA : `ALU_SRL;
                     `FUNC_OR: ALUctr = `ALU_OR;
                     `FUNC_AND: ALUctr = `ALU_AND;
+                endcase
+                case (funct3)
+                    `FUNC_SLL: ExtOp = 0;
+                    `FUNC_SRL: ExtOp = (funct7 == `AUX_FUNC_SRA) ? 0 : 0;
                 endcase
             end
             // Add additional cases for other opcodes if necessary
@@ -381,10 +394,6 @@ module ALU(
     // Internal signals for signed and unsigned comparisons
     wire signed [31:0] signed_a = a;
     wire signed [31:0] signed_b = b;
-
-    // Detect overflow for addition and subtraction
-    // wire overflow_add = (~(a[31] ^ b[31]) & (a[31] ^ result[31]));
-    // wire overflow_sub = ((a[31] ^ b[31]) & (a[31] ^ result[31]));
 
     // Determine the result based on the ALU control signal
     always @(*) begin
@@ -499,6 +508,41 @@ module MuxI(
     end
 endmodule // MuxI
 
+// JALR Mux
+module MuxJALR(
+    input [31:0] a,
+    input [31:0] b,
+    input [1:0] sel,
+    output reg [31:0] out
+    );
+
+    always @(*) begin
+        if (sel == 2'b11) begin
+            out = b;
+        end else begin
+            out = a;
+        end
+    end
+
+endmodule // MuxJALR
+
+// AUIPC Mux
+module MuxAUIPC(
+    input [31:0] a,
+    input [31:0] b,
+    input [6:0] opcode_sel,
+    output reg [31:0] out
+    );
+
+    always @(*) begin
+        if (opcode_sel == 7'b0010111) begin
+            out = b;
+        end else begin
+            out = a;
+        end
+    end
+endmodule // MuxAUIPC
+
 // Adder for PC
 module AdderPC(
     input [31:0] PC,
@@ -506,7 +550,7 @@ module AdderPC(
     );
 
     always @(*) begin
-        out = PC + 32'h20;
+        out = PC + 32'h4;
     end
 endmodule
 
@@ -522,108 +566,29 @@ module AdderPCImm(
     end
 endmodule
 
-// Library Modules for Northwestern - CompEng 361 - Lab2
+// Branch Control Set
+module BranchControlSet(
+    input [6:0] opcode,
+    input [2:0] funct3,
+    input zero,
+    input negative,
+    output reg BranchControlSignal
+    );
 
-module InstMem(Addr, Size, DataOut, CLK);
-   input [31:0] Addr;
-   input [1:0] 	Size;
-   output [31:0] DataOut;
-   reg [31:0] DataOut;   
-   input 	CLK;
-   reg [7:0] 	Mem[0:1024];
-   wire [31:0] 	AddrW;
+    always @(*) begin
+        case (opcode)
+            `OPCODE_BRANCH: begin
+                case (funct3)
+                    `FUNC_BEQ: BranchControlSignal = zero;
+                    `FUNC_BNE: BranchControlSignal = ~zero;
+                    `FUNC_BLT: BranchControlSignal = negative;
+                    `FUNC_BGE: BranchControlSignal = ~negative;
+                    `FUNC_BLTU: BranchControlSignal = negative;
+                    `FUNC_BGEU: BranchControlSignal = ~negative;
+                endcase
+            end
+            default: BranchControlSignal = 0;
+        endcase
+    end
 
-   // Addresses are word aligned
-   assign AddrW = Addr & 32'hfffffffc;
-
-   // Little endian 
-   always @ *
-     DataOut = {Mem[AddrW+3], Mem[AddrW+2], 
-		Mem[AddrW+1], Mem[AddrW]};
-      
-endmodule // InstMem
-
-
-module DataMem(Addr, Size, DataIn, DataOut, WEN, CLK);
-   input [31:0] Addr;
-   input [1:0] 	Size;   
-   input [31:0] DataIn;   
-   output [31:0] DataOut;
-   reg [31:0] DataOut;   
-   input      WEN, CLK;
-   reg [7:0] 	Mem[0:1024];
-
-   wire [31:0] 	AddrH, AddrW;
-
-   assign AddrH = Addr & 32'hfffffffe;
-   assign AddrW = Addr & 32'hfffffffc;
-
-   always @ * 
-     DataOut = (Size == 2'b00) ? {4{Mem[Addr]}} :
-	       ((Size == 2'b01) ? {2{Mem[AddrH+1],Mem[AddrH]}} :
-		{Mem[AddrW+3], Mem[AddrW+2], Mem[AddrW+1], Mem[AddrW]});
-   
-   always @ (negedge CLK)
-     if (!WEN) begin
-	case (Size)
-	  2'b00: begin // Write byte
-	     Mem[Addr] <= DataIn[7:0];
-	  end
-	  2'b01: begin  // Write halfword
-	     Mem[AddrH] <= DataIn[7:0];
-	     Mem[AddrH+1] <= DataIn[15:8];
-	  end
-	  2'b10, 2'b11: begin // Write word
-	     Mem[AddrW] <= DataIn[7:0];
-	     Mem[AddrW+1] <= DataIn[15:8];
-	     Mem[AddrW+2] <= DataIn[23:16];
-	     Mem[AddrW+3] <= DataIn[31:24];
-	  end
-	endcase // case (Size)
-     end // if (!WEN)
-      
-endmodule // DataMem
-
-module RegFile(AddrA, DataOutA,
-	       AddrB, DataOutB,
-	       AddrW, DataInW, WenW, CLK);
-   input [4:0] AddrA, AddrB, AddrW;
-   output [31:0] DataOutA, DataOutB;
-   reg [31:0] DataOutA, DataOutB;   
-   input [31:0]  DataInW;
-   input 	 WenW, CLK;
-   reg [31:0] 	 Mem[0:31];
-   
-   always @ * begin
-      // Remember that x0 == 0
-      DataOutA = (AddrA == 0) ? 32'h00000000 : Mem[AddrA];
-      DataOutB = (AddrB == 0) ? 32'h00000000 : Mem[AddrB]; 
-   end
-
-   always @ (negedge CLK) begin
-     if (!WenW) begin
-       Mem[AddrW] <= DataInW;
-     end
-      Mem[0] <= 0; // Enforce the invariant that x0 = 0
-   end
-   
-endmodule // RegFile
-
-
-module Reg(Din, Qout, WEN, CLK, RST);
-   parameter width = 32;
-   input [width-1:0] Din;
-   output [width-1:0] Qout;
-   input 	      WEN, CLK, RST;
-
-   reg [width-1:0]    Qout;
-   
-   always @ (negedge CLK or negedge RST)
-     if (!RST)
-       Qout <= 0;
-     else
-       if (!WEN)
-	 Qout <= Din;
-  
-endmodule // Reg
-
+endmodule // BranchControlSet
