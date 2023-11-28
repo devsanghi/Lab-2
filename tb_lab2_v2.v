@@ -30,7 +30,7 @@ module tb;
 
       // Feel free to modify to inspect whatever you want
       // #0 $monitor($time,, "PC=%08x IR=%08x halt=%x exit=%x", CPU.PC, CPU.InstWord, halt, exit);
-      #0 $monitor($time,, "Rsrc1=%04x, Rdata1=%08x, Rsrc2 = %04x, Rdata2 = %08x, pc = %08X, ALUop2=%08x, ALUres = %08x, NPC = %08x, Rdst=%04x, RWdata=%04x, DataWord = %08x, zero = %04x, neg = %04x, immext: %04x, pcimm: %04x, memsize: %04x, wren: %04x", CPU.Rsrc1, CPU.Rdata1, CPU.Rsrc2, CPU.Rdata2, CPU.PC, CPU.ALUop2, CPU.ALUresult, CPU.NPC, CPU.Rdst, CPU.RWrdata, CPU.DataWord, CPU.zero, CPU.negative, CPU.Imm_extended, CPU.Bimm13, CPU.MemSize, CPU.MemWrEn);
+      #0 $monitor($time,, "Rsrc1=%04x, Rdata1=%08x, Rsrc2 = %04x, Rdata2 = %08x, pc = %08X, ALUop2=%08x, ALUres = %08x, NPC = %08x, Rdst=%04x, RWdata=%04x, DataWord = %08x, zero = %04x, neg = %04x, immext: %04x, pcimm: %04x, memsize: %04x, memwren: %04x, regwren: %04x", CPU.Rsrc1, CPU.Rdata1, CPU.Rsrc2, CPU.Rdata2, CPU.PC, CPU.ALUop2, CPU.ALUresult, CPU.NPC, CPU.Rdst, CPU.RWrdata, CPU.DataWord, CPU.zero, CPU.negative, CPU.Imm_extended, CPU.Bimm13, CPU.MemSize, CPU.MemWrEn, CPU.RWrEn);
 
       // Exit???
       wait(exit);

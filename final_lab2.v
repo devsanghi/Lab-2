@@ -202,8 +202,9 @@ module SingleCycleCPU(halt, clk, rst);
 
     BranchControlSet BCS1(.opcode(opcode), .funct3(funct3), .zero(zero), .negative(negative), .BranchControlSignal(BranchControlSignal));
 
-    AndGate AND1(.a(BranchControlSignal), .b(zero), .out(BranchAnd));
-    OrGate OR1(.a(nPC_sel[1]), .b(BranchAnd), .out(PCSrc));
+    //AndGate AND1(.a(BranchControlSignal), .b(zero), .out(BranchAnd));
+    //OrGate OR1(.a(nPC_sel[1]), .b(BranchAnd), .out(PCSrc));
+    OrGate OR1(.a(nPC_sel[1]), .b(BranchControlSignal), .out(PCSrc));
 
     AdderPCImm API1(.PC(PC), .Imm(Imm_extended), .PC_Imm(PC_Imm));
     MuxI MUXI2(.a(PC_Plus_4), .b(PC_Imm), .sel(PCSrc), .out(NPC_noJALR));
@@ -290,12 +291,18 @@ module ControlUnit(
                 nPC_sel = 2'b01; // Branch address
                 // Select the branch decision control signal based on funct3
                 case (funct3)
+                    // `FUNC_BEQ: ALUctr = `ALU_SUB; // For beq, subtract and check zero
+                    // `FUNC_BNE: ALUctr = `ALU_SUB; // For bne, subtract and check non-zero
+                    // `FUNC_BLT: ALUctr = `ALU_SLT; // For blt, set less than
+                    // `FUNC_BGE: ALUctr = `ALU_SLT; // For bge, set less than and negate
+                    // `FUNC_BLTU: ALUctr = `ALU_SLTU; // For bltu, set less than unsigned
+                    // `FUNC_BGEU: ALUctr = `ALU_SLTU; // For bgeu, set less than unsigned and negate
                     `FUNC_BEQ: ALUctr = `ALU_SUB; // For beq, subtract and check zero
                     `FUNC_BNE: ALUctr = `ALU_SUB; // For bne, subtract and check non-zero
-                    `FUNC_BLT: ALUctr = `ALU_SLT; // For blt, set less than
-                    `FUNC_BGE: ALUctr = `ALU_SLT; // For bge, set less than and negate
-                    `FUNC_BLTU: ALUctr = `ALU_SLTU; // For bltu, set less than unsigned
-                    `FUNC_BGEU: ALUctr = `ALU_SLTU; // For bgeu, set less than unsigned and negate
+                    `FUNC_BLT: ALUctr = `ALU_SUB; // For blt, set less than
+                    `FUNC_BGE: ALUctr = `ALU_SUB; // For bge, set less than and negate
+                    `FUNC_BLTU: ALUctr = `ALU_SUB; // For bltu, set less than unsigned
+                    `FUNC_BGEU: ALUctr = `ALU_SUB; // For bgeu, set less than unsigned and negate
                 endcase
                 case (funct3)
                     `FUNC_BEQ: ExtOp = 1;
