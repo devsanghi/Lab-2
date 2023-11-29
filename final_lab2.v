@@ -119,6 +119,7 @@ module SingleCycleCPU(halt, clk, rst);
     wire [31:0] PC_Imm;
     wire [31:0] ALUresult_0; //
     wire [31:0] AUIPC_output; // 
+    wire [31:0] DataWord_extended; //
 
     
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -215,10 +216,12 @@ module SingleCycleCPU(halt, clk, rst);
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 9) Memory
     DataMem DMEM(.Addr(ALUresult), .Size(MemSize), .DataIn(Rdata2), .DataOut(DataWord), .WEN(MemWrEn), .CLK(clk));
+    // dataword needs to be sign or zero extended if lb, lh, lbu, lhu
+    load_store_extender LSE1(.DataWord(DataWord), .opcode(opcode), .funct3(funct3), .DataWord_extended(DataWord_extended));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
     // 10) Update Regs
-    MuxI MUXI3(.a(ALUresult), .b(DataWord), .sel(MemtoReg), .out(RWrdata_0));
+    MuxI MUXI3(.a(ALUresult), .b(DataWord_extended), .sel(MemtoReg), .out(RWrdata_0));
     MuxI MUXI4(.a(RWrdata_0), .b(PC_Plus_4), .sel(nPC_sel[1]), .out(RWrdata));
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////           
@@ -599,6 +602,35 @@ module BranchControlSet(
     end
 
 endmodule // BranchControlSet
+
+module load_store_extender(DataWord, opcode, funct3, DataWord_extended);
+    input [31:0] DataWord;
+    input [6:0] opcode;
+    input [2:0] funct3;
+    output reg [31:0] DataWord_extended;
+
+    always @(*) begin
+        case (opcode)
+            `OPCODE_LOAD: begin
+                case (funct3)
+                    `FUNC_LB: DataWord_extended = {{24{DataWord[7]}}, DataWord[7:0]};
+                    `FUNC_LH: DataWord_extended = {{16{DataWord[15]}}, DataWord[15:0]};
+                    `FUNC_LBU: DataWord_extended = {{24'b0}, DataWord[7:0]};
+                    `FUNC_LHU: DataWord_extended = {{16'b0}, DataWord[15:0]};
+                endcase
+            end
+        //    `OPCODE_STORE: begin
+          //      case (funct3)
+            //        `FUNC_SB: DataWord_extended = DataWord[7:0];
+              //      `FUNC_SH: DataWord_extended = DataWord[15:0];
+                //endcase
+            //end
+            default: DataWord_extended = DataWord;
+        endcase
+    end
+endmodule // load_store_extender
+
+
 
 // Library Modules for Northwestern - CompEng 361 - Lab2
 
